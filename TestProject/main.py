@@ -19,12 +19,12 @@ def anonymize(text: str, per_id: int) -> str:
     for ent in reversed(doc.ents):
         if ent.label_ in {"PER"}:
             anonymized_text = (
-                anonymized_text[:ent.start_char] + f"[{ent.label_}]" + anonymized_text[ent.end_char:]
+                anonymized_text[:ent.start_char] + f"[{ent.label_}_{per_id:02d}]" + anonymized_text[ent.end_char:]
             )
     return anonymized_text
 
 def anonymize_files():
-    for per_id, file in INPUT_DIR.glob("*.pdf"):
+    for per_id, file in enumerate(INPUT_DIR.glob("*.pdf")):
         with pdfplumber.open(file) as pdf:
             output_buffer = BytesIO()
 
@@ -32,7 +32,7 @@ def anonymize_files():
                 page_width, page_height = page.width, page.height
 
                 if page_num == 0:
-                    c = canvas.Canvas(output_buffer, page_width, page_height)
+                    c = canvas.Canvas(output_buffer, (page_width, page_height))
                 else:
                     c.showPage()
 
@@ -54,7 +54,6 @@ def anonymize_files():
             output_file = OUTPUT_DIR / file.name
             with open(output_file, 'wb') as f:
                 f.write(output_buffer.getvalue())
-
 
 if __name__ == "__main__":
     anonymize_files()
