@@ -1,54 +1,93 @@
+from pathlib import Path
 import spacy
 from spacy_layout import spaCyLayout
-from pathlib import Path
+import pdfplumber
 from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
-from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.colors import black
 
 INPUT_DIR = Path(__file__).parent / "Data"
 OUTPUT_DIR = Path(__file__).parent / "Anonymized"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-nlp = spacy.load("de_core_news_sm")
+nlp = spacy.load("de_core_news_lg")
 layout = spaCyLayout(nlp)
 
-def anonymize_text(text, per_id: int):
-    doc = nlp(text)
-    for ent in reversed(doc.ents):
-        if ent.label_ == "PER":
-            text = text[:ent.start_char] + f"[{ent.label_}_{per_id:02d}]" + text[ent.end_char:]
-    return text
+def anonymize_pdf(input_path, output_path):
+    doc = layout(str(input_path))
+    doc = nlp(doc)
 
-def save_layout_as_pdf(doc, output_path: Path, per_id: int):
-    output_buffer = BytesIO()
-    c = canvas.Canvas(output_buffer, pagesize=A4)
-    width, height = A4
+    person_mapping = {}
+    person_counter = 1
 
-    current_page = 1
+    for ent in doc.ents:
+        if ent.label_ == "PERSON":
+            if ent.text not in person_mapping:
+                person_mapping[ent.text] = f"PER_{person_counter:02d}"
+                person_counter += 1
 
-    for span in doc.spans["layout"]:
-        layout_info = span._.layout
-        if layout_info.page_no != current_page:
+    with pdfplumber.open(input_path) as pdf:
+        c = canvas.Canvas(str(output_path), pagesize=letter)
+
+        for page_num, page in enumerate(pdf.pages):
+            page_width = float(page.width)
+            page_height = float(page.height)
+            c.setPageSize((page_width, page_height))
+
+            page_layout, page_spans = doc._.pages[page_num]
+
+            header_threshold = page_height * 0.9
+            footer_threshold = page_height * 0.1
+
+            for span in page_spans:
+                if span.label_ in ["page_header", "page_footer"]:
+                    continue
+
+                if (span._.layout.y > header_threshold or
+                        span._.layout.y + span._.layout.height < footer_threshold):
+                    continue
+
+                text = span.text
+                for original_name, replacement in person_mapping.items():
+                    text = text.replace(original_name, replacement)
+
+                x = span._.layout.x
+                y = page_height - span._.layout.y - span._.layout.height
+
+                font_size = min(span._.layout.height * 0.8, 12)
+                c.setFont("Helvetica", font_size)
+                c.setFillColor(black)
+
+                max_width = span._.layout.width
+                lines = []
+                words = text.split()
+                current_line = []
+
+                for word in words:
+                    test_line = " ".join(current_line + [word])
+                    if c.stringWidth(test_line, "Helvetica", font_size) <= max_width:
+                        current_line.append(word)
+                    else:
+                        if current_line:
+                            lines.append(" ".join(current_line))
+                            current_line = [word]
+                        else:
+                            lines.append(word)
+
+                if current_line:
+                    lines.append(" ".join(current_line))
+
+                for i, line in enumerate(lines):
+                    line_y = y + i * font_size * 1.2
+                    if line_y > footer_threshold and line_y < header_threshold:
+                        if x + c.stringWidth(line, "Helvetica", font_size) <= page_width:
+                            c.drawString(x, line_y, line)
+
             c.showPage()
-            current_page = layout_info.page_no
 
-        if span.label_ not in {"section_header", "page_footer"}:
-            x = layout_info.x
-            y = height - layout_info.y
-            font_size = getattr(layout_info, "font_size", 9) or 9
-            c.setFont("Helvetica", font_size)
-            text = anonymize_text(span.text, per_id)
-            c.drawString(x, y, text)
+        c.save()
 
-    c.save()
-    with open(output_path, 'wb') as f:
-        f.write(output_buffer.getvalue())
-
-def anonymize_files():
-    pdf_files = list(INPUT_DIR.glob("*.pdf"))
-    for per_id, doc in enumerate(layout.pipe(pdf_files)):
-        output_path = OUTPUT_DIR / f"{pdf_files[per_id].stem}.pdf"
-        save_layout_as_pdf(doc, output_path, per_id)
 
 if __name__ == "__main__":
-    anonymize_files()
+    for file in list(INPUT_DIR.glob("*.pdf")):
+        anonymize_pdf(INPUT_DIR/file.name, OUTPUT_DIR/file.name)
