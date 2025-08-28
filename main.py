@@ -1,10 +1,12 @@
 from pathlib import Path
 import spacy
 from spacy_layout import spaCyLayout
-import pdfplumber
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.colors import black
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, PageBreak
+from reportlab.platypus import Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+from xml.sax.saxutils import escape
 
 INPUT_DIR = Path(__file__).parent / "Data"
 OUTPUT_DIR = Path(__file__).parent / "Anonymized"
@@ -13,81 +15,80 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 nlp = spacy.load("de_core_news_lg")
 layout = spaCyLayout(nlp)
 
-def anonymize_pdf(input_path, output_path):
-    doc = layout(str(input_path))
+styles = getSampleStyleSheet()
+text_style = ParagraphStyle("Body9", parent=styles["Normal"], fontSize=9, leading=10)
+
+
+def is_header_or_footer(span, page_height, cutoff=0.1):
+    y, h = span._.layout.y, span._.layout.height
+    return (y < page_height * cutoff) or ((y + h) > page_height * (1 - cutoff))
+
+
+def anonymize(span_doc, pdf_id):
+    return " ".join(
+        f"PER_{pdf_id:02d}" if tok.ent_type_ == "PER" else tok.text
+        for tok in span_doc
+    )
+
+
+def render_table(df, available_width):
+    if all(isinstance(c, (int, float)) for c in df.columns):
+        df.columns = df.iloc[0].astype(str)
+        df = df.drop(df.index[0]).reset_index(drop=True)
+
+    data = [[Paragraph(str(c), text_style) for c in df.columns]] + [
+        [Paragraph(str(v) if v is not None else "", text_style) for v in row]
+        for row in df.itertuples(index=False, name=None)
+    ]
+
+    number_cols = len(data[0]) if data else 1
+    table = Table(data, colWidths=[available_width / number_cols] * number_cols)
+    table.setStyle(TableStyle([
+        ("GRID", (0,0), (-1,-1), 0.25, colors.black),
+        ("VALIGN", (0,0), (-1,-1), "TOP")
+    ]))
+    return table
+
+
+def process_pdf(pdf_path, pdf_id):
+    doc = layout(str(pdf_path))
     doc = nlp(doc)
 
-    person_mapping = {}
-    person_counter = 1
+    story = []
+    num_pages = len(doc._.pages)
 
-    for ent in doc.ents:
-        if ent.label_ == "PERSON":
-            if ent.text not in person_mapping:
-                person_mapping[ent.text] = f"PER_{person_counter:02d}"
-                person_counter += 1
+    margin = 36
+    available_width = A4[0] - 2 * margin
 
-    with pdfplumber.open(input_path) as pdf:
-        c = canvas.Canvas(str(output_path), pagesize=letter)
+    for page_idx, (page_layout, spans) in enumerate(doc._.pages):
+        for span in spans:
+            if is_header_or_footer(span, page_layout.height):
+                continue
 
-        for page_num, page in enumerate(pdf.pages):
-            page_width = float(page.width)
-            page_height = float(page.height)
-            c.setPageSize((page_width, page_height))
+            if span.label_ == "table" and span._.data is not None:
+                story.append(render_table(span._.data, available_width))
+            else:
+                txt = anonymize(span.as_doc(), pdf_id)
+                story.append(Paragraph(escape(txt), text_style))
 
-            page_layout, page_spans = doc._.pages[page_num]
+            story.append(Spacer(1, 4))
 
-            header_threshold = page_height * 0.9
-            footer_threshold = page_height * 0.1
+        if page_idx < num_pages - 1:
+            story.append(PageBreak())
 
-            for span in page_spans:
-                if span.label_ in ["page_header", "page_footer"]:
-                    continue
+    out_path = OUTPUT_DIR / f"PER_{pdf_id:02d}.pdf"
+    SimpleDocTemplate(
+        str(out_path), pagesize=A4, leftMargin=margin, rightMargin=margin,
+        topMargin=margin, bottomMargin=margin
+    ).build(story)
 
-                if (span._.layout.y > header_threshold or
-                        span._.layout.y + span._.layout.height < footer_threshold):
-                    continue
+    print(f"Saved {out_path}")
 
-                text = span.text
-                for original_name, replacement in person_mapping.items():
-                    text = text.replace(original_name, replacement)
 
-                x = span._.layout.x
-                y = page_height - span._.layout.y - span._.layout.height
-
-                font_size = min(span._.layout.height * 0.8, 12)
-                c.setFont("Helvetica", font_size)
-                c.setFillColor(black)
-
-                max_width = span._.layout.width
-                lines = []
-                words = text.split()
-                current_line = []
-
-                for word in words:
-                    test_line = " ".join(current_line + [word])
-                    if c.stringWidth(test_line, "Helvetica", font_size) <= max_width:
-                        current_line.append(word)
-                    else:
-                        if current_line:
-                            lines.append(" ".join(current_line))
-                            current_line = [word]
-                        else:
-                            lines.append(word)
-
-                if current_line:
-                    lines.append(" ".join(current_line))
-
-                for i, line in enumerate(lines):
-                    line_y = y + i * font_size * 1.2
-                    if line_y > footer_threshold and line_y < header_threshold:
-                        if x + c.stringWidth(line, "Helvetica", font_size) <= page_width:
-                            c.drawString(x, line_y, line)
-
-            c.showPage()
-
-        c.save()
+def main():
+    for i, pdf in enumerate(list(INPUT_DIR.glob("*.pdf")), start=1):
+        process_pdf(pdf, i)
 
 
 if __name__ == "__main__":
-    for file in list(INPUT_DIR.glob("*.pdf")):
-        anonymize_pdf(INPUT_DIR/file.name, OUTPUT_DIR/file.name)
+    main()
