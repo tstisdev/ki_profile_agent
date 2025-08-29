@@ -1,0 +1,15 @@
+﻿services:
+  rag-pipeline:
+    build: .
+    container_name: rag-pipeline
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DATA_PATH=/app/data
+      - STORAGE_PATH=/app/storage
+      - LOG_LEVEL=INFO
+    volumes:
+      - ${DATA_DIR:-C:\Users\TommySteiner\PycharmProjects\RAG\data}:/app/data:ro
+      - ${STORAGE_DIR:-C:\Users\TommySteiner\PycharmProjects\RAG\storage}:/app/storage
+    stdin_open: true
+    tty: true
+    working_dir: /app

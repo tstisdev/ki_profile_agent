@@ -1,0 +1,8 @@
+# Mitarbeiterdaten
+/Data
+
+# IDE
+.idea
+
+#local
+.venv/
