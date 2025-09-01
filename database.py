@@ -56,14 +56,14 @@ def insert_processed_document(pdf_id, original_filename, anonymized_filename=Non
             """, (pdf_id, original_filename, anonymized_filename, status))
             return cur.fetchone()[0]
 
-def insert_extracted_entity(document_id, entity_type, original_text, anonymized_text, position_start=None, position_end=None, confidence_score=None):
+def insert_extracted_entity(document_id, entity_type, original_text, anonymized_text, position_start=None, position_end=None, confidence_score=None, detection_method='spacy_ner'):
     """Insert an extracted entity record"""
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO extracted_entities (document_id, entity_type, original_text, anonymized_text, position_start, position_end, confidence_score)
-                VALUES (%s, %s, %s, %s, %s, %s, %s);
-            """, (document_id, entity_type, original_text, anonymized_text, position_start, position_end, confidence_score))
+                INSERT INTO extracted_entities (document_id, entity_type, original_text, anonymized_text, position_start, position_end, confidence_score, detection_method)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+            """, (document_id, entity_type, original_text, anonymized_text, position_start, position_end, confidence_score, detection_method))
 
 def insert_document_metadata(document_id, page_count=None, word_count=None, processing_time=None, file_size=None):
     """Insert document metadata"""
@@ -82,7 +82,7 @@ def get_processed_documents():
                 SELECT pd.*, COUNT(ee.id) as entity_count
                 FROM processed_documents pd
                 LEFT JOIN extracted_entities ee ON pd.id = ee.document_id
-                GROUP BY pd.id
+                GROUP BY pd.id, pd.processing_date
                 ORDER BY pd.processing_date DESC;
             """)
             return cur.fetchall()
