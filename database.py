@@ -50,8 +50,8 @@ def get_entities_for_deanonymization():
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT anonymized_text, original_text 
+                SELECT DISTINCT ON (anonymized_text) anonymized_text, original_text 
                 FROM extracted_entities 
-                ORDER BY id;
+                ORDER BY anonymized_text, id;
             """)
             return {row[0]: row[1] for row in cur.fetchall()}

@@ -141,7 +141,6 @@ def process_pdf(pdf_path, pdf_id):
         raise
 
 def deanonymize_text(text, entity_mapping):
-    """Replace anonymized placeholders with original names"""
     for anonymized, original in entity_mapping.items():
         text = text.replace(anonymized, original)
     return text
@@ -153,9 +152,6 @@ def deanonymize_pdf(pdf_path, entity_mapping):
 
         for page_id, (page_layout, spans) in enumerate(doc._.pages):
             for span in spans:
-                if is_header_or_footer(span, page_layout.height):
-                    continue
-
                 if span.label_ == "table" and span._.data is not None:
                     df = span._.data.copy()
                     for col in df.columns:
@@ -235,9 +231,6 @@ def main():
             process_pdf(pdf, i)
 
     elif choice == "2":
-        process_deanonymization()
-
-        print("\nStep 2: Deanonymizing...")
         process_deanonymization()
 
     else:
