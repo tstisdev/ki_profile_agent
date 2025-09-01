@@ -47,7 +47,6 @@ def insert_extracted_entity(entity_type, original_text, anonymized_text, detecti
             """, (entity_type, original_text, anonymized_text, detection_method))
 
 def get_entities_for_deanonymization():
-    """Get all entities for deanonymization"""
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
