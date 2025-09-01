@@ -45,9 +45,9 @@ def anonymize(span_doc, pdf_id):
         if mask[i]:
             while i < len(span_doc) and mask[i]:
                 i += 1
-            out.append(f"PER_{pdf_id:02d}")
+            out.append(f"PER_{pdf_id:02d}" + span_doc[i - 1].whitespace_)
         else:
-            out.append(span_doc[i].text)
+            out.append(span_doc[i].text + span_doc[i].whitespace_)
             i += 1
 
     return "".join(out).strip()
