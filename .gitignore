@@ -1,7 +1,9 @@
 # Mitarbeiterdaten
 /Data/
 /Anonymized/
+/Deanonymized/
 
-# IDE settings (but keep run configurations)
+/__pycache__/
+
+# IDE settings
 /.idea/
-!/.idea/runConfigurations/

@@ -7,7 +7,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, PageBreak, Spacer
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib import colors
-from database import test_connection, insert_extracted_entity
+from database import test_connection, insert_extracted_entity, get_entities_for_deanonymization
 
 INPUT_DIR = Path(__file__).parent / "Data"
 OUTPUT_DIR = Path(__file__).parent / "Anonymized"
@@ -135,21 +135,135 @@ def process_pdf(pdf_path, pdf_id):
         print(f"Error processing {pdf_path.name}: {e}")
         raise
 
+def deanonymize_text(text, entity_mapping):
+    """Replace anonymized placeholders with original names"""
+    for anonymized, original in entity_mapping.items():
+        text = text.replace(anonymized, original)
+    return text
+
+def deanonymize_pdf(pdf_path, entity_mapping):
+    """Process anonymized PDF and restore original names"""
+    try:
+        doc = nlp(layout(str(pdf_path)))
+        story = []
+
+        for page_id, (page_layout, spans) in enumerate(doc._.pages):
+            for span in spans:
+                if is_header_or_footer(span, page_layout.height):
+                    continue
+
+                if span.label_ == "table" and span._.data is not None:
+                    # Deanonymize table data
+                    df = span._.data.copy()
+                    for col in df.columns:
+                        if df[col].dtype == 'object':  # Only process text columns
+                            df[col] = df[col].astype(str).apply(lambda x: deanonymize_text(x, entity_mapping))
+                    story.append(render_table(df, A4[0] - 144))
+                else:
+                    # Deanonymize text content
+                    original_text = span.as_doc().text
+                    deanonymized_text = deanonymize_text(original_text, entity_mapping)
+                    story.append(Paragraph(clean_text(deanonymized_text), text_style))
+
+                story.append(Spacer(1, 4))
+
+            if page_id < len(doc._.pages) - 1:
+                story.append(PageBreak())
+
+        return story
+    except Exception as e:
+        print(f"Error deanonymizing {pdf_path.name}: {e}")
+        raise
+
+def process_deanonymization():
+    """Main function to deanonymize all anonymized PDFs"""
+    print("Starting deanonymization process...")
+
+    # Get entity mappings from database
+    entity_mapping = get_entities_for_deanonymization()
+    if not entity_mapping:
+        print("No entities found in database for deanonymization.")
+        return
+
+    print(f"Found {len(entity_mapping)} entities for deanonymization")
+
+    # Create output directory for deanonymized files
+    deanon_dir = Path(__file__).parent / "Deanonymized"
+    deanon_dir.mkdir(exist_ok=True)
+
+    # Process all anonymized PDFs
+    anonymized_files = list(OUTPUT_DIR.glob("PER_*.pdf"))
+    if not anonymized_files:
+        print(f"No anonymized PDF files found in {OUTPUT_DIR}")
+        return
+
+    print(f"Processing {len(anonymized_files)} anonymized PDF files...")
+
+    for pdf_file in anonymized_files:
+        print(f"Deanonymizing: {pdf_file.name}")
+
+        try:
+            story = deanonymize_pdf(pdf_file, entity_mapping)
+
+            # Generate output filename
+            output_name = pdf_file.name.replace("PER_", "RESTORED_")
+            output_path = deanon_dir / output_name
+
+            # Create deanonymized PDF
+            SimpleDocTemplate(str(output_path), pagesize=A4).build(story)
+            print(f"Saved deanonymized: {output_name}")
+
+        except Exception as e:
+            print(f"Failed to deanonymize {pdf_file.name}: {e}")
+
+    print(f"Deanonymization complete! Files saved to {deanon_dir}")
+
 def main():
     print("Testing database connection...")
     if not test_connection():
         print("Database connection failed. Make sure PostgreSQL is running: docker-compose up -d")
         return
 
-    pdf_files = list(INPUT_DIR.glob("*.pdf"))
-    if not pdf_files:
-        print(f"No PDF files found in {INPUT_DIR}")
-        return
+    print("\nChoose an option:")
+    print("1. Anonymize PDFs (Data/ -> Anonymized/)")
+    print("2. Deanonymize PDFs (Anonymized/ -> Deanonymized/)")
+    print("3. Both (Anonymize then Deanonymize)")
 
-    print(f"Processing {len(pdf_files)} PDF files...")
-    for i, pdf in enumerate(pdf_files, start=1):
-        print(f"Processing {i}/{len(pdf_files)}: {pdf.name}")
-        process_pdf(pdf, i)
+    choice = input("\nEnter choice (1-3): ").strip()
+
+    if choice == "1":
+        # Anonymize PDFs
+        pdf_files = list(INPUT_DIR.glob("*.pdf"))
+        if not pdf_files:
+            print(f"No PDF files found in {INPUT_DIR}")
+            return
+
+        print(f"Processing {len(pdf_files)} PDF files...")
+        for i, pdf in enumerate(pdf_files, start=1):
+            print(f"Processing {i}/{len(pdf_files)}: {pdf.name}")
+            process_pdf(pdf, i)
+
+    elif choice == "2":
+        # Deanonymize PDFs
+        process_deanonymization()
+
+    elif choice == "3":
+        # Both operations
+        pdf_files = list(INPUT_DIR.glob("*.pdf"))
+        if not pdf_files:
+            print(f"No PDF files found in {INPUT_DIR}")
+            return
+
+        print(f"Step 1: Anonymizing {len(pdf_files)} PDF files...")
+        for i, pdf in enumerate(pdf_files, start=1):
+            print(f"Processing {i}/{len(pdf_files)}: {pdf.name}")
+            process_pdf(pdf, i)
+
+        print("\nStep 2: Deanonymizing...")
+        process_deanonymization()
+
+    else:
+        print("Invalid choice. Please run again and select 1, 2, or 3.")
 
 if __name__ == "__main__":
     main()
