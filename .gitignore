@@ -2,4 +2,6 @@
 /Data/
 /Anonymized/
 
+# IDE settings (but keep run configurations)
 /.idea/
+!/.idea/runConfigurations/
