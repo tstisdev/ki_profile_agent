@@ -10,6 +10,7 @@ from langchain.schema import Document
 from src.components.vector_store import VectorStore
 from src.utils.logger import logger
 from config.settings import settings
+from database import get_entities_for_deanonymization
 
 
 class RAGChain:
@@ -87,6 +88,12 @@ class RAGChain:
 
         try:
             answer = self.chain.invoke(question)
+            # De-anonymize the final answer from placeholders back to original values
+            mapping = get_entities_for_deanonymization()
+            if mapping:
+                for anonymized, original in mapping.items():
+                    if anonymized in answer:
+                        answer = answer.replace(anonymized, original)
 
             relevant_docs = self.vector_store.search(question, k=settings.TOP_K_RESULTS)
 
