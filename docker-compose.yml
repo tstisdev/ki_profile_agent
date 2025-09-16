@@ -1,49 +1,51 @@
 services:
   rag_app:
-    build: ./app
+    build: .
     container_name: rag-pipeline
     depends_on:
       - postgres
-      - vllm
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_API_BASE=https://api.openai.com/v1
       - DATA_PATH=/app/data
       - STORAGE_PATH=/app/storage
       - LOG_LEVEL=INFO
-      - PGHOST=postgres
-      - PGPORT=5432
-      - PGUSER=${PGUSER}
-      - PGPASSWORD=${PGPASSWORD}
-      - PGDATABASE=${PGDATABASE}
+      # Use DB_* envs (also supported by code); keep PG* compatibility
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-password123}
+      - DB_NAME=${DB_NAME:-teams_profil_ki}
       - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
     volumes:
       - ${DATA_DIR:-C:\Users\TommySteiner\PycharmProjects\RAG\data}:/app/data:ro
       - ${STORAGE_DIR:-C:\Users\TommySteiner\PycharmProjects\RAG\storage}:/app/storage
+      - huggingface_cache:/root/.cache/huggingface
     stdin_open: true
     tty: true
     working_dir: /app
     networks:
       - rag_network
 
-  vllm:
-    image: public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo:latest
-    container_name: rag_vllm
-    ports:
-      - "8000:8000"
-    command: >
-      --model microsoft/DialoGPT-small
-      --host 0.0.0.0
-      --port 8000
-      --served-model-name microsoft/DialoGPT-small
-    environment:
-      - HF_HUB_OFFLINE=0
-    networks:
-      - rag_network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/models"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+  # vllm:
+  #   image: public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo:latest
+  #   container_name: rag_vllm
+  #   ports:
+  #     - "8000:8000"
+  #   command: >
+  #     --model microsoft/DialoGPT-small
+  #     --host 0.0.0.0
+  #     --port 8000
+  #     --served-model-name microsoft/DialoGPT-small
+  #   environment:
+  #     - HF_HUB_OFFLINE=0
+  #   networks:
+  #     - rag_network
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8000/v1/models"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
 
   postgres:
     image: pgvector/pgvector:pg16
@@ -54,7 +56,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password123
     ports:
-      - "5432:5432"
+      - "55432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -72,6 +74,6 @@ volumes:
     driver: local
 
 networks:
-  - rag_network:
+  rag_network:
     driver: bridge
 

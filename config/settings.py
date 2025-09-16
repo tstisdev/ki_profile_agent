@@ -6,7 +6,8 @@ load_dotenv()
 
 class Settings:
     OPENAI_API_KEY:str = os.getenv("OPENAI_API_KEY", "")
-    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "text-embedding-small")
+    # Default to a sentence-transformers model compatible with HuggingFaceEmbeddings
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
     CHAT_MODEL: str = os.getenv("CHAT_MODEL", "gpt-3.5-turbo")
 
     DATA_PATH: Path = Path(os.getenv("DATA_PATH", "/app/data"))

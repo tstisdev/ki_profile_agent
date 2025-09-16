@@ -9,7 +9,7 @@ import faiss
 import numpy as np
 from langchain.schema import Document
 from langchain_openai import OpenAIEmbeddings
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from psycopg2.extras import Json
 
 from src.utils.logger import logger
@@ -29,8 +29,10 @@ class VectorStore:
     #    self.metadata = []
 
     def __init__(self, settings):
+        # Normalize common typo in HF model id
+        model_name = settings.EMBEDDING_MODEL.replace("sentence-transformer/", "sentence-transformers/")
         self.embeddings = HuggingFaceEmbeddings(
-            model_name=settings.EMBEDDING_MODEL,
+            model_name=model_name,
             cache_folder=os.environ.get("HF_HOME", "/root/.cache/huggingface"),
             model_kwargs={'device': 'cpu'},
             encode_kwargs={'normalize_embeddings': True})
@@ -204,6 +206,23 @@ class VectorStore:
                 self.documents = data["documents"]
                 self.metadata = data["metadata"]
 
+            # Validate that the FAISS index dim matches the current embedding model dim
+            try:
+                expected_dim = len(self.embeddings.embed_query("dimension_check"))
+                if hasattr(self.index, 'd'):
+                    index_dim = self.index.d
+                else:
+                    index_dim = self.index.ntotal and self.index.d  # fallback
+                if index_dim != expected_dim:
+                    logger.warning(
+                        f"FAISS index dim {index_dim} != embedding model dim {expected_dim}. "
+                        f"Forcing index rebuild."
+                    )
+                    return False
+            except Exception as e:
+                logger.warning(f"Failed to validate index dimension: {e}. Forcing rebuild.")
+                return False
+
             logger.info(f"Success: Loaded index with {self.index.ntotal} vectors")
             return True
         except Exception as e:
@@ -215,15 +234,36 @@ class VectorStore:
             raise ValueError("No index found. Load/Create an index first")
 
         k = k or settings.TOP_K_RESULTS
+        # Sanitize query to avoid tokenizer input errors
+        try:
+            if not isinstance(query, str):
+                query = str(query)
+            # Normalize to UTF-8 safe string
+            query = query.encode('utf-8', 'ignore').decode('utf-8')
+        except Exception:
+            pass
+
         logger.info(f"Searching for TOP_K={k} for query: {query[:100]}")
 
         start_time = time.time()
 
         keyword_results = self._keyword_search(query, k * 2)
 
-        query_embedding = self.embeddings.embed_query(query)
-        query_vector = np.array([query_embedding], dtype=np.float32)
-        scores, indices = self.index.search(query_vector, k * 2)
+        try:
+            query_embedding = self.embeddings.embed_query(query)
+            if not isinstance(query_embedding, (list, tuple, np.ndarray)):
+                raise TypeError(f"embed_query returned unexpected type: {type(query_embedding)}")
+            query_vector = np.array([query_embedding], dtype=np.float32)
+            logger.info(f"Query embedding shape: {query_vector.shape}; index size: {self.index.ntotal}")
+        except Exception as e:
+            logger.error(f"Failed to compute query embedding: {e}")
+            raise
+
+        try:
+            scores, indices = self.index.search(query_vector, k * 2)
+        except Exception as e:
+            logger.error(f"FAISS search failed: {e}")
+            raise
 
         semantic_results = []
         for score, idx in zip(scores[0], indices[0]):

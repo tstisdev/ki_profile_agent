@@ -14,12 +14,12 @@ python-dotenv~=1.1.1
 tiktoken
 
 # Core
-langchain-core~=0.3.74
+# Let langchain resolve the matching langchain-core version
 numpy~=2.3.2
 dotenv~=0.9.9
 
-# Spacy
-spacy>=3.6.0
+# Spacy (3.8+ supports pydantic v2, compatible with langchain)
+spacy>=3.8.2
 spacy-layout
 reportlab>=4.0.0
 
@@ -32,7 +32,4 @@ sentence-transformers~=3.3.0
 
 # Hugging Face
 huggingface-hub~=0.26.0
-
-# VLLM
-vllm~=0.8.1
 

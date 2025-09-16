@@ -6,11 +6,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DB_CONFIG = {
-    'host': os.getenv('DB_HOST', 'localhost'),
-    'port': os.getenv('DB_PORT', '5432'),
-    'database': os.getenv('DB_NAME', 'teams_profil_ki'),
-    'user': os.getenv('DB_USER', 'postgres'),
-    'password': os.getenv('DB_PASSWORD', 'password123')
+    'host': os.getenv('DB_HOST') or os.getenv('PGHOST', 'localhost'),
+    'port': os.getenv('DB_PORT') or os.getenv('PGPORT', '5432'),
+    'database': os.getenv('DB_NAME') or os.getenv('PGDATABASE', 'teams_profil_ki'),
+    'user': os.getenv('DB_USER') or os.getenv('PGUSER', 'postgres'),
+    'password': os.getenv('DB_PASSWORD') or os.getenv('PGPASSWORD', 'password123')
 }
 
 @contextmanager

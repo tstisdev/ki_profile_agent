@@ -12,7 +12,7 @@ class RAGPipeline:
 
     def __init__(self):
         self.documents_loader = DocumentsLoader()
-        self.vector_store = VectorStore()
+        self.vector_store = VectorStore(settings)
         self.rag_chain = None
         self.is_initialized = False
 

@@ -1,4 +1,5 @@
 ﻿import sys
+import argparse
 import json
 from typing import List
 
@@ -64,9 +65,21 @@ def print_pipeline_info(pipeline: RAGPipeline) -> None:
 
 
 def main():
+    parser = argparse.ArgumentParser(description="RAG Pipeline Entry Point")
+    parser.add_argument("--generate-sample-pdfs", action="store_true", help="Generate sample PDFs before starting the pipeline")
+    args = parser.parse_args()
+
     try:
         print("Hi, ich bin der KI_Profil BOT. Wen soll ich finden?")
         print("-"*50)
+
+        if args.generate_sample_pdfs:
+            try:
+                from scripts.generate_sample_pdfs import create_pdfs, read_pdfs
+                create_pdfs()
+                read_pdfs()
+            except Exception as e:
+                logger.error(f"Failed generating sample PDFs: {e}")
 
         pipeline = RAGPipeline()
         pipeline.initialize()

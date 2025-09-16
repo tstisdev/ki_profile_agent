@@ -22,6 +22,6 @@ RUN mkdir -p /app/data /app/storage
 ENV PYTHONPATH=/app/src:/app
 ENV PYTHONUNBUFFERED=1
 
-RUN python -c "from sentence_transformers import SentenceTransformer; model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2'); print('Model downloaded successfully')"
+## Remove eager model download to speed up builds; cache via volume at runtime
 
 CMD ["python","src/main.py"]

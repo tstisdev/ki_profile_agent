@@ -23,20 +23,23 @@ class RAGChain:
         )
 
         self.prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are my helpful assistant. You answer only based on the provided context
-            
-        Instructions:
-        - Use ONLY the information from the provided context to answer my questions
-        - If the context doesnt contain enough information for you to answer my question, say "Context didnt provide enough information to answer your question"
-        - If possible, provide references to source documents
-        - Answer as concise but comprehensive as possible
-        - Synthesize multiple relevant pieces of information if there are more than one 
-        
-        Context Documents: {context}
-        """)
-        , ("human", "Question: {question}")
-        ])
+            ("system", """You are an assistant that helps match job inquiries to the most suitable employees 
+        based only on the provided context (employee profiles). 
 
+        Instructions:
+        - Use ONLY the information from the provided context to select employees.
+        - Compare the job requirements with the skills, experiences, and languages listed in the employee profiles.
+        - Rank or recommend the employee(s) that best fit the job requirements.
+        - If multiple employees fit, provide the top matches with reasoning.
+        - If no clear match is found, respond: "Context didn’t provide enough information to identify a suitable employee."
+        - Be concise but comprehensive: explain why the match is suitable (skills, languages, experience).
+        - When available, cite the employee name or identifier from the context so it’s clear who the recommendation is.
+
+        Context Documents (Employee Profiles):
+        {context}
+        """),
+            ("human", "Job Inquiry: {question}")
+        ])
 
         self.chain = (
             {
@@ -108,7 +111,9 @@ class RAGChain:
             return response
 
         except Exception as e:
-            logger.error(f"Failed to process question: {str(e)}")
+            import traceback
+            tb = traceback.format_exc()
+            logger.error(f"Failed to process question: {str(e)}\n{tb}")
             return {
                 "question": question,
                 "answer": f"Error processing question: {str(e)}",
