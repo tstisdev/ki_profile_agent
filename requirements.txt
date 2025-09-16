@@ -1,11 +1,38 @@
-﻿langchain~=0.3.27
+# Langchain
+langchain~=0.3.27
 langchain-community~=0.3.27
 langchain-openai~=0.3.29
+langchain-huggingface~=0.1.2
 openai~=1.99.9
+
+# File handling
 pypdf
+
+# Vector store
 faiss-cpu~=1.11.0.post1
 python-dotenv~=1.1.1
 tiktoken
+
+# Core
 langchain-core~=0.3.74
 numpy~=2.3.2
 dotenv~=0.9.9
+
+# Spacy
+spacy>=3.6.0
+spacy-layout
+reportlab>=4.0.0
+
+# Database
+psycopg2-binary>=2.9.0
+python-dotenv>=1.0.0
+
+# Sentence Transformers
+sentence-transformers~=3.3.0
+
+# Hugging Face
+huggingface-hub~=0.26.0
+
+# VLLM
+vllm~=0.8.1
+

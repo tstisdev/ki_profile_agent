@@ -1,8 +1,11 @@
 # Mitarbeiterdaten
-/Data
+/Data/
+/Anonymized/
+/Deanonymized/
 
-# IDE
-.idea
+/__pycache__/
 
 #local
 .venv/
+# IDE settings
+/.idea/

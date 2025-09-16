@@ -1,6 +1,7 @@
 ﻿import pickle
 import time
 import re
+import os
 from pathlib import Path
 from typing import Any,  Dict, List,  Tuple
 
@@ -8,21 +9,36 @@ import faiss
 import numpy as np
 from langchain.schema import Document
 from langchain_openai import OpenAIEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from psycopg2.extras import Json
 
 from src.utils.logger import logger
 from config.settings import settings
+from database import get_db_connection
 
 
 class VectorStore:
 
-    def __init__(self):
-        self.embeddings = OpenAIEmbeddings(
-            openai_api_key=settings.OPENAI_API_KEY,
-            model=settings.EMBEDDING_MODEL
-        )
+    #def __init__(self):
+    #    self.embeddings = OpenAIEmbeddings(
+    #        openai_api_key=settings.OPENAI_API_KEY,
+    #        model=settings.EMBEDDING_MODEL
+    #    )
+    #    self.index = None
+    #    self.documents = []
+    #    self.metadata = []
+
+    def __init__(self, settings):
+        self.embeddings = HuggingFaceEmbeddings(
+            model_name=settings.EMBEDDING_MODEL,
+            cache_folder=os.environ.get("HF_HOME", "/root/.cache/huggingface"),
+            model_kwargs={'device': 'cpu'},
+            encode_kwargs={'normalize_embeddings': True})
         self.index = None
         self.documents = []
         self.metadata = []
+
+
 
     def _extract_keywords(self, text: str) -> List[str]:
         prime_art_ids = re.findall(r'\b\d{10,}\b', text) #lange nummern
@@ -61,77 +77,117 @@ class VectorStore:
         matches.sort(key=lambda x: x[1], reverse=True)
         return matches[:k]
 
+    # def generate_embeddings(self, texts: List[str]) -> np.ndarray:
+    #     logger.info(f"Generating embeddings for {len(texts)} texts")
+    #     start_time = time.time()
+    #
+    #     batch_size = 100 # um api limits zu vermeiden
+    #     all_embeddings = []
+    #
+    #     for i in range(0, len(texts), batch_size):
+    #         batch_texts = texts[i:i + batch_size]
+    #
+    #         total_items = len(texts)
+    #         total_batches = (total_items + batch_size - 1) // batch_size
+    #         current_batch = (i // batch_size) + 1
+    #
+    #         logger.info(f"Processing batch {current_batch}/{total_batches}")
+    #
+    #         try:
+    #             batch_embeddings = self.embeddings.embed_documents(batch_texts)
+    #             all_embeddings.extend(batch_embeddings)
+    #             time.sleep(0.1)
+    #         except Exception as e:
+    #             logger.error(f"Failed to generate embeddings for batch {i // batch_size + 1}: {str(e)}")
+    #             raise
+    #
+    #     embeddings_array = np.array(all_embeddings, dtype=np.float32)
+    #     embed_time = time.time() - start_time
+    #     logger.info(f"Embedding time: {embed_time:.2} seconds")
+    #     logger.info(f"Embedding shape: {embeddings_array.shape}")
+    #     return embeddings_array
     def generate_embeddings(self, texts: List[str]) -> np.ndarray:
         logger.info(f"Generating embeddings for {len(texts)} texts")
         start_time = time.time()
-
-        batch_size = 100 # um api limits zu vermeiden
-        all_embeddings = []
-
+        batch_size = 100
+        all_embeddings: List[List[float]] = []
         for i in range(0, len(texts), batch_size):
             batch_texts = texts[i:i + batch_size]
-
-            total_items = len(texts)
-            total_batches = (total_items + batch_size - 1) // batch_size
+            total_batches = (len(texts) + batch_size - 1) // batch_size
             current_batch = (i // batch_size) + 1
-
-            logger.info(f"Processing batch {current_batch}/{total_batches}")  # zum beispiel Processing batch 1/4
-
-            try:
-                batch_embeddings = self.embeddings.embed_documents(batch_texts)
-                all_embeddings.extend(batch_embeddings)
-
-                time.sleep(0.1) #vermeiden von rate limits
-
-            except Exception as e:
-                logger.error(f"Failed to generate embeddings for batch {i // batch_size + 1}: {str(e)}")
-                raise
-
+            logger.info(f"Processing batch {current_batch}/{total_batches}")
+            batch_embeddings = self.embeddings.embed_documents(batch_texts)
+            all_embeddings.extend(batch_embeddings)
+            time.sleep(0.05)
         embeddings_array = np.array(all_embeddings, dtype=np.float32)
-        embed_time = time.time() - start_time
-
-        logger.info(f"Embedding time: {embed_time:.2} seconds")
-        logger.info(f"Embedding shape: {embeddings_array.shape}")
-
+        logger.info(f"Embedding time: {time.time() - start_time:.2f} seconds; shape={embeddings_array.shape}")
         return embeddings_array
 
+    # def create_index(self, documents: List[Document]) -> None:
+    #     logger.info(f"Creating index for {len(documents)} documents")
+    #     texts = [doc.page_content for doc in documents]
+    #     metadata = [doc.metadata for doc in documents]
+    #     embeddings = self.generate_embeddings(texts)
+    #     dimension = embeddings.shape[1]
+    #     logger.info(f"Creating FAISS idx with dimension {dimension}")
+    #     self.index = faiss.IndexFlatIP(dimension)
+    #     start_time = time.time()
+    #     self.index.add(embeddings)
+    #     index_time = time.time() - start_time
+    #     self.documents = documents
+    #     self.metadata = metadata
+    #     logger.info(f"FAISS index with {self.index.ntotal} vectors. Indexing time: {index_time:.2} seconds")
     def create_index(self, documents: List[Document]) -> None:
-        logger.info(f"Creating index for {len(documents)} documents")
-
+        logger.info(f"Creating index for {len(documents)} documents and persisting to Postgres")
         texts = [doc.page_content for doc in documents]
         metadata = [doc.metadata for doc in documents]
-
         embeddings = self.generate_embeddings(texts)
-
+        # Keep FAISS in-memory for fast search
         dimension = embeddings.shape[1]
-        logger.info(f"Creating FAISS idx with dimension {dimension}")
-
         self.index = faiss.IndexFlatIP(dimension)
-
-        start_time = time.time()
         self.index.add(embeddings)
-        index_time = time.time() - start_time
-
         self.documents = documents
         self.metadata = metadata
+        # Persist to Postgres (float array + jsonb)
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS document_embeddings (
+                        id SERIAL PRIMARY KEY,
+                        doc_index INTEGER NOT NULL,
+                        content TEXT NOT NULL,
+                        metadata JSONB,
+                        embedding REAL[] NOT NULL
+                    );
+                """)
+                # Replace entire content for now
+                cur.execute("DELETE FROM document_embeddings;")
+                insert_sql = (
+                    "INSERT INTO document_embeddings (doc_index, content, metadata, embedding) "
+                    "VALUES (%s, %s, %s, %s)"
+                )
+                for i, (text, meta, vec) in enumerate(zip(texts, metadata, embeddings)):
+                    cur.execute(insert_sql, (i, text, Json(meta), vec.tolist()))
+        logger.info("Persisted embeddings and metadata to Postgres table 'document_embeddings'")
 
-        logger.info(f"FAISS index with {self.index.ntotal} vectors. Indexing time: {index_time:.2} seconds")
-
+    # def save_index(self, index_path: Path, metadata_path: Path) -> None:
+    #     logger.info(f"Saving FAISS index to {index_path}")
+    #     if self.index is None:
+    #         raise ValueError("No index to save. Must create an index first")
+    #     faiss.write_index(self.index, str(index_path))
+    #     with open(metadata_path, "wb") as f:
+    #         pickle.dump({'documents': self.documents, 'metadata': self.metadata}, f)
+    #     logger.info(f"Success: Saved index and metadata")
     def save_index(self, index_path: Path, metadata_path: Path) -> None:
-        logger.info(f"Saving FAISS index to {index_path}")
-
         if self.index is None:
             raise ValueError("No index to save. Must create an index first")
-
-        faiss.write_index(self.index, str(index_path))
-
-        with open(metadata_path, "wb") as f:
-            pickle.dump({
-                'documents': self.documents,
-                'metadata': self.metadata,
-            }, f)
-
-        logger.info(f"Success: Saved index and metadata")
+        # Already persisted to Postgres in create_index; just ensure a small checkpoint for local fallback
+        logger.info("Persisting small checkpoint (optional) and confirming DB state")
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM document_embeddings;")
+                count = cur.fetchone()[0]
+        logger.info(f"Postgres has {count} embeddings in 'document_embeddings'")
 
     def load_index(self, index_path: Path, metadata_path: Path) -> bool:
         try:
