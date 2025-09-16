@@ -193,6 +193,11 @@ class VectorStore:
 
     def load_index(self, index_path: Path, metadata_path: Path) -> bool:
         try:
+            # First, attempt to load vectors and docs directly from Postgres
+            if self._load_from_postgres():
+                logger.info("Loaded FAISS index from Postgres")
+                return True
+
             if not index_path.exists() or not metadata_path.exists():
                 logger.info("Index files not found, creating index")
                 return False
@@ -227,6 +232,55 @@ class VectorStore:
             return True
         except Exception as e:
             logger.error(f"Failed to load FAISS index: {str(e)}")
+            return False
+
+    def _load_from_postgres(self) -> bool:
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT doc_index, content, metadata, embedding
+                        FROM document_embeddings
+                        ORDER BY doc_index ASC
+                        """
+                    )
+                    rows = cur.fetchall()
+
+            if not rows:
+                return False
+
+            texts: List[str] = []
+            metas: List[Dict[str, Any]] = []
+            vectors: List[List[float]] = []
+            for _, content, metadata, embedding in rows:
+                texts.append(content)
+                metas.append(metadata or {})
+                vectors.append(list(embedding))
+
+            embeddings_array = np.array(vectors, dtype=np.float32)
+            dim = embeddings_array.shape[1]
+            logger.info(f"Rebuilding FAISS from Postgres: {len(texts)} vectors, dim={dim}")
+
+            self.index = faiss.IndexFlatIP(dim)
+            self.index.add(embeddings_array)
+            self.documents = [Document(page_content=t, metadata=m) for t, m in zip(texts, metas)]
+            self.metadata = metas
+
+            # Validate search-time embedding dimension compatibility
+            try:
+                current_dim = len(self.embeddings.embed_query("dimension_check"))
+                if current_dim != dim:
+                    logger.warning(
+                        f"Embedding model dim {current_dim} != stored vectors dim {dim}. "
+                        f"Search will fail. Set EMBEDDING_MODEL to match stored vectors or rebuild index."
+                    )
+            except Exception:
+                pass
+
+            return True
+        except Exception as e:
+            logger.warning(f"Failed loading index from Postgres: {e}")
             return False
 
     def search(self, query: str, k: int = None) -> List[Tuple[Document, float]]:
