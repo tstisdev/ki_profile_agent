@@ -24,23 +24,43 @@ class RAGChain:
         )
 
         self.prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an assistant that helps match job inquiries to the most suitable employees 
-        based only on the provided context (employee profiles). 
+            ("system", """Du bist ein Assistent, der Stellenanfragen mit den am besten geeigneten Mitarbeitern abgleicht.
 
-        Instructions:
-        - Use ONLY the information from the provided context to select employees.
-        - Compare the job requirements with the skills, experiences, and languages listed in the employee profiles.
-        - Rank or recommend the employee(s) that best fit the job requirements.
-        - If multiple employees fit, provide the top matches with reasoning.
-        - If no clear match is found, respond: "Context didn’t provide enough information to identify a suitable employee."
-        - Be concise but comprehensive: explain why the match is suitable (skills, languages, experience).
-        - When available, cite the employee name or identifier from the context so it’s clear who the recommendation is.
+        Anweisungen:
+        - Nutze NUR die Informationen aus den bereitgestellten Mitarbeiterprofilen.
+        - Vergleiche die Anforderungen mit den Fähigkeiten, Erfahrungen und Sprachen der Mitarbeiter.
+        - Antworte IMMER in diesem Format:
 
-        Context Documents (Employee Profiles):
+        Der beste Mitarbeiter für die Anfrage ist: [Name des Mitarbeiters]
+
+        Begründung: [1-2 prägnante Sätze, die die relevanten Fähigkeiten oder Erfahrungen nennen]
+
+        - Falls kein passender Mitarbeiter gefunden wird: "Kein geeigneter Mitarbeiter in den vorliegenden Profilen gefunden."
+        - Sei präzise und auf den Punkt.
+
+        Mitarbeiterprofile:
         {context}
         """),
-            ("human", "Job Inquiry: {question}")
+            ("human", "Anfrage: {question}")
         ])
+        # self.prompt = ChatPromptTemplate.from_messages([
+        #     ("system", """You are an assistant that helps match job inquiries to the most suitable employees
+        # based only on the provided context (employee profiles).
+        #
+        # Instructions:
+        # - Use ONLY the information from the provided context to select employees.
+        # - Compare the job requirements with the skills, experiences, and languages listed in the employee profiles.
+        # - Rank or recommend the employee(s) that best fit the job requirements.
+        # - If multiple employees fit, provide the top matches with reasoning.
+        # - If no clear match is found, respond: "Context didn’t provide enough information to identify a suitable employee."
+        # - Be concise but comprehensive: explain why the match is suitable (skills, languages, experience).
+        # - When available, cite the employee name or identifier from the context so it’s clear who the recommendation is.
+        #
+        # Context Documents (Employee Profiles):
+        # {context}
+        # """),
+        #     ("human", "Job Inquiry: {question}")
+        # ])
 
         self.chain = (
             {

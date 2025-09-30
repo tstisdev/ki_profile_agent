@@ -17,7 +17,7 @@ In der Docker-compose.yml wird ein lokaler Ordner referenziert, wo die Profil PD
 
 ## Build / Starten
 
-1. App bauen: ``docker compose build rap_app``
+1. App bauen: ``docker compose build rag_app``
 2. Starten: ``docker compose run --rm -it rag_app python src/main.py``
    Hier wird in der Console die App ausgeführt, nach ein paar Logs kommt "Enter Question: ", dann kann man die Profile durchsuchen
 3. Wenn man PDFs, Models / Dimension / chunk sizes ändert und man schon eine DB mit Embeddings hat muss man 

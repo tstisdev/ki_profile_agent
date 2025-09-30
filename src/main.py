@@ -39,7 +39,7 @@ def run_interactive_mode(pipeline: RAGPipeline) -> None:
 
     while True:
         try:
-            question_in = input("Enter your question: ").strip()
+            question_in = input("Stelle deine Frage: ").strip()
             if question_in.lower() in ["q", "quit", "e", "exit"]:
                 print("Closing...")
                 break
@@ -70,8 +70,6 @@ def main():
     args = parser.parse_args()
 
     try:
-        print("Hi, ich bin der KI_Profil BOT. Wen soll ich finden?")
-        print("-"*50)
 
         if args.generate_sample_pdfs:
             try:
@@ -85,6 +83,9 @@ def main():
         pipeline.initialize()
 
         # print_pipeline_info(pipeline)
+        print("-"*50)
+        print("Hi, ich bin der KI_Profil BOT. Wen soll ich finden?\n")
+
         run_interactive_mode(pipeline)
 
 
